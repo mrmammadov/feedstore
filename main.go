@@ -2,24 +2,14 @@ package main
 
 import (
 	"encoding/xml"
+	"feedstore/database"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"time"
+
+	_ "github.com/lib/pq"
 )
-
-type Feed struct {
-	Entries []Entry `xml:"entry"`
-}
-
-type Entry struct {
-	Content string `xml:"content"`
-	Link string `xml:"link"`
-	Title string `xml:"title"`
-	Updated time.Time `xml:"updated"`
-	Published time.Time `xml:"published"`
-}
 
 func fetchRSSFeed(url string) ([]byte, error) {
 	resp, err := http.Get(url)
@@ -46,6 +36,21 @@ func parseRSSFeed(feedXML []byte) Feed {
 	return feed
 }
 
+func (f Feed) ToDBEntry() []database.Feed {
+	dbEntries := make([]database.Feed, len(f.Entries))
+	for i, e := range f.Entries {
+		db_feed := database.Feed{
+			Content:   e.Content,
+			Link:      e.Link,
+			Title:     e.Title,
+			Updated:   e.Updated,
+			Published: e.Published,
+		}
+		dbEntries[i] = db_feed
+	}
+	return dbEntries
+}
+
 func main() {
 	url := "https://www.reddit.com/r/golang/.rss"
 	feedBytes, err := fetchRSSFeed(url)
@@ -54,8 +59,13 @@ func main() {
 	}
 
 	feed := parseRSSFeed(feedBytes)
-	for _, value := range feed.Entries {
-		fmt.Printf("Title: %s\n", value.Title)
-		fmt.Printf("Content: %s\n\n", value.Content)
+	db_feed := feed.ToDBEntry()
+
+	for _, e := range db_feed{
+		_, err = database.InsertData(e)
+		if err != nil {
+			panic(err)
+		}
 	}
+
 }
